@@ -1,54 +1,50 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from fastapi import FastAPI, Depends, HTTPException,Header
+from jose import JWTError, jwt
+from datetime import datetime, timedelta,timezone
 
 app = FastAPI()
 
-# Database URL
-DATABASE_URL = "sqlite:///./test.db"
 
-# Engine create (DB connection)
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+SECRET_KEY = "MYSECRETKEY"
+ALGORITHM = "HS256"
 
-# Session (DB operations ke liye)
-SessionLocal = sessionmaker(bind=engine)
-
-# Base (model ke liye)
-Base = declarative_base()
-
-
-# Table (Model)
-class Todo(Base):
-    __tablename__ = "todos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String)
-    completed = Column(String)
-
-
-# Table create
-Base.metadata.create_all(bind=engine)
-
-
-# Dependency (DB session provide karega)
-def get_db():
-    db = SessionLocal()
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=30)
+    to_encode.update({
+        "exp":expire
+    })
+    token = jwt.encode(to_encode,SECRET_KEY,algorithm=ALGORITHM)
+    return token
+    
+def verify_access_token(token:str = Header(None)):
     try:
-        yield db
-    finally:
-        db.close()
+        payload = jwt.decode(token=token,key=SECRET_KEY,algorithms=ALGORITHM)
+        return payload
+    except:
+        raise HTTPException(
+             status_code=401,
+             detail = "Invalid access token"
+        )
+           
+                                
 
-#Create API
-@app.post("/todos")
-def create_todo(title:str,db: Session = Depends(get_db)):
-    todo = Todo(title=title,completed="False")
-    db.add(todo)
-    db.commit()
-    db.refresh(todo)
-    return{
-        "message":"Todo Created",
-        "data":todo
+@app.post("/login")
+def login(username:str, passwd:str):
+    if(username != "Rahul" or passwd !="1234"):
+        raise HTTPException(
+            status_code=401,
+            detail= "Invalid username or password"
+        )
+    token = create_access_token({"username":username})
+    return {
+         "access_token": token
     }
+ 
+@app.get("/dashboard")    
+def dashboard(user = Depends(verify_access_token)):
+    return {
+                "message" : "Secure data access",
+                "data": "dashboard"
+            }   
+                
